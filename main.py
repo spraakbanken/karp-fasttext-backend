@@ -63,14 +63,14 @@ def get_model(newspaper, type):
 
 
 @app.get("/most_similar/{searches}")
-def read_root(searches, newspaper=None, type=None, size=10, format="html"):
+def read_root(searches, newspaper=None, type=None, number=10, format=None):
     searches = searches.split(",")
     with get_model(newspaper, type) as model:
         results = []
         for search in searches:
             # words are separated with "|"
             words = search.split("|")
-            res = model.wv.most_similar(positive=words, topn=int(size))
+            res = model.wv.most_similar(positive=words, topn=int(number))
             results.append((words, res))
 
         if format == "json":
