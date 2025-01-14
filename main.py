@@ -43,7 +43,8 @@ def get_model(newspaper, type):
         model_pool[newspaper][type].put(model)
 
 
-@app.get("/most_similar/{word}")
-def read_root(word, newspaper=None, type=None):
+@app.get("/most_similar/{words}")
+def read_root(words, newspaper=None, type=None, size=10):
+    words = words.split(",")
     with get_model(newspaper, type) as model:
-        return model.wv.most_similar(word, topn=10)
+        return model.wv.most_similar(words, topn=int(size))
