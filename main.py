@@ -37,8 +37,12 @@ header = """
 """
 
 
+def get_name(newspaper, type) -> str:
+    return f"kubord-fasttext-{newspaper_lookup[newspaper]}-{type}"
+
+
 def create_model(newspaper, type) -> Queue:
-    model_name = f"kubord-fasttext-{newspaper_lookup[newspaper]}-{type}"
+    model_name = get_name(newspaper, type)
     logger.info(f"loading {model_name}")
     model = FastText.load(f"models/{model_name}/{model_name}.bin")
     q = Queue(maxsize=1)
@@ -63,34 +67,54 @@ def get_model(newspaper, type):
 
 
 @app.get("/most_similar/{searches}")
-def read_root(searches, newspaper=None, type=None, number=10, format=None):
+def read_root(searches, newspaper="all", type="lemma", number=10, format=None):
     searches = searches.split(",")
-    with get_model(newspaper, type) as model:
-        results = []
-        for search in searches:
-            # words are separated with "|"
-            words = search.split("|")
-            res = model.wv.most_similar(positive=words, topn=int(number))
-            results.append((words, res))
 
-        if format == "json":
-            return results
+    if newspaper == "all":
+        newspapers = list(newspaper_lookup.keys())
+    else:
+        newspapers = newspaper.split(",")
 
-        # html is the default format
-        tables = []
-        for res in results:
-            table_rows = [
-                f"""<tr>
-                        <td>
-                            <a href="{newspaper_links[newspaper] + row[0]}" target="_blank">{row[0]}</a>
-                        </td>
-                        <td>{row[1]}</td>
-                    </tr>"""
-                for row in res[1]
-            ]
-            title = ", ".join(res[0])
-            table = "<h2>" + title + "</h2><table>" + "".join(table_rows) + "</table>"
-            tables.append(table)
-        content = "".join(tables)
+    content = []
+    for newspaper in newspapers:
+        with get_model(newspaper, type) as model:
+            results = []
+            for search in searches:
+                # words are separated with "|"
+                words = search.split("|")
+                res = model.wv.most_similar(positive=words, topn=int(number))
+                results.append((words, res))
 
-        return HTMLResponse(content=f"{header}{content}</body></html>", status_code=200)
+            model_name = get_name(newspaper, type)
+            if format == "json":
+                content.append([model_name, results])
+            else:
+                # html is the default format
+                tables = []
+                for res in results:
+                    table_rows = [
+                        f"""<tr>
+                                <td>
+                                    <a href="{newspaper_links[newspaper] + row[0]}" target="_blank">{row[0]}</a>
+                                </td>
+                                <td>{row[1]}</td>
+                            </tr>"""
+                        for row in res[1]
+                    ]
+                    title = ", ".join(res[0])
+                    table = (
+                        "<h3>"
+                        + title
+                        + "</h3><table>"
+                        + "".join(table_rows)
+                        + "</table>"
+                    )
+                    tables.append(table)
+                content.append(f"<h2>{model_name}</h2>")
+                content.append("".join(tables))
+    if format == "json":
+        return content
+    html_content = "".join(content)
+    return HTMLResponse(
+        content=f"{header}{html_content}</body></html>", status_code=200
+    )
