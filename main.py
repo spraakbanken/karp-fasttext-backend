@@ -3,6 +3,7 @@ import logging
 from queue import Queue
 
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 from gensim.models.fasttext import FastText
 
 app = FastAPI()
@@ -16,6 +17,18 @@ newspaper_lookup = {
 logger = logging.Logger("main")
 
 types = ["lemma", "token"]
+
+
+header = """
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>kubord-fasttext results</title>
+    </head>
+    <body>
+"""
 
 
 def create_model(newspaper, type) -> Queue:
@@ -43,8 +56,29 @@ def get_model(newspaper, type):
         model_pool[newspaper][type].put(model)
 
 
-@app.get("/most_similar/{words}")
-def read_root(words, newspaper=None, type=None, size=10):
-    words = words.split(",")
+@app.get("/most_similar/{searches}")
+def read_root(searches, newspaper=None, type=None, size=10, format="html"):
+    searches = searches.split(",")
     with get_model(newspaper, type) as model:
-        return model.wv.most_similar(words, topn=int(size))
+        results = []
+        for search in searches:
+            # words are separated with "|"
+            words = search.split("|")
+            res = model.wv.most_similar(positive=words, topn=int(size))
+            results.append((words, res))
+
+        if format == "json":
+            return results
+
+        # html is the default format
+        tables = []
+        for res in results:
+            table_rows = [
+                f"<tr><td>{row[0]}</td><td>{row[1]}</td></tr>" for row in res[1]
+            ]
+            title = ", ".join(res[0])
+            table = "<h2>" + title + "</h2><table>" + "".join(table_rows) + "</table>"
+            tables.append(table)
+        content = "".join(tables)
+
+        return HTMLResponse(content=f"{header}{content}</body></html>", status_code=200)
