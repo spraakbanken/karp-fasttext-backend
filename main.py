@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import logging
 from queue import Queue
 
@@ -32,18 +33,17 @@ model_pool = {
 }
 
 
+@contextmanager
 def get_model(newspaper, type):
     pool = model_pool[newspaper][type]
-    return pool.get(block=True, timeout=5)
-
-
-def return_model(newspaper, type, model):
-    model_pool[newspaper][type].put(model)
+    model = pool.get(block=True, timeout=5)
+    try:
+        yield model
+    finally:
+        model_pool[newspaper][type].put(model)
 
 
 @app.get("/most_similar/{word}")
 def read_root(word, newspaper=None, type=None):
-    model = get_model(newspaper, type)
-    res = model.wv.most_similar(word, topn=10)
-    return_model(newspaper, type, model)
-    return res
+    with get_model(newspaper, type) as model:
+        return model.wv.most_similar(word, topn=10)
