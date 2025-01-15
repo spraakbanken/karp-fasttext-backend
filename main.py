@@ -182,14 +182,15 @@ def create_app(model_pool):
 def main():
     # for testing purposes, call main.py with one newspaper, to make startup faster
     if len(sys.argv) > 1:
-        newspapers = [sys.argv[1]]
+        port = int(sys.argv[1])
     else:
-        newspapers = newspaper_settings.keys()
+        port = 8000
+    newspapers = newspaper_settings.keys()
     # make sure we only have one pool of models, several would consume too much memory
     model_pool = {newspaper: {type: create_model(newspaper, type) for type in types} for newspaper in newspapers}
     app = create_app(model_pool)
-    print("starting app on port 8000")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    print(f"starting app on port {port}")
+    uvicorn.run(app, host="0.0.0.0", port=port)
 
 
 if __name__ == "__main__":
