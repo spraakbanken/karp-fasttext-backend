@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 from dataclasses import dataclass
+import os
 from queue import Queue
 import sys
 from typing import Optional
@@ -110,10 +111,8 @@ def format_json(_, results: list[tuple[list[str], list[tuple[str, float]]]], mod
 
 
 def create_app(model_pool):
-    app = FastAPI(
-        title="Språkbanken kubord-fasttext API",
-        description=api_description,
-    )
+    root_path = os.environ.get("ROOT_PATH")
+    app = FastAPI(title="Språkbanken kubord-fasttext API", description=api_description, root_path=root_path)
 
     @contextmanager
     def get_model(newspaper, type):
