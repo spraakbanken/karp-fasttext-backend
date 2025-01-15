@@ -4,7 +4,7 @@ from queue import Queue
 import sys
 from typing import Optional
 
-from fastapi import FastAPI, Path, Query, Response
+from fastapi import FastAPI, Header, Path, Query, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse, JSONResponse
 from gensim.models.fasttext import FastText
@@ -144,9 +144,8 @@ def create_app(model_pool):
                                Can be omitted to search in all newspapers.
                                Available newspapers are: gp, dn or aftonbladet.""",
         ),
-        format: Optional[str] = Query(
-            None,
-            description="""The format to return the results in. Can be "json", otherwise HTML is returned""",
+        accept: Optional[str] = Header(
+            None, description="set to application/json for JSON format, otherwhise HTML is returned"
         ),
     ) -> Response:
         searches = searches.split(",")
@@ -167,12 +166,12 @@ def create_app(model_pool):
                     results.append((words, res))
 
                 model_name = get_name(newspaper, type)
-                if format == "json":
+                if accept == "application/json":
                     fun = format_json
                 else:
                     fun = format_html
                 content.append(fun(newspaper, results, model_name))
-        if format == "json":
+        if accept == "application/json":
             return JSONResponse(content=jsonable_encoder(content))
         html_content = "".join(content)
         return HTMLResponse(content=f"{header}{html_content}</body></html>", status_code=200)
