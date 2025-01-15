@@ -2,11 +2,7 @@
 
 .PHONY: serve
 serve:
-	fastapi dev main.py
-
-.PHONY: run-prod
-run-prod:
-	fastapi run main.py
+	python main.py
 
 .PHONY: install
 install:

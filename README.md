@@ -8,4 +8,4 @@ Add/modify dependencies in `requirements.txt`, use `make update-deps` to install
 
 Format with `ruff`, using `make fmt-lint` or by invoking `ruff` manually.
 
-Start development server with `make serve`.
+Start server with `make serve`.
