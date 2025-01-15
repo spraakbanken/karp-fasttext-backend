@@ -48,7 +48,6 @@ def create_model(newspaper, type) -> Queue:
 
 
 def format_html(newspaper, results, model_name):
-    # html is the default format
     tables = []
     for res in results:
         table_rows = [
@@ -102,13 +101,12 @@ def create_app(model_pool):
                 if format == "json":
                     content.append([model_name, results])
                 else:
+                    # html is the default format
                     content.append(format_html(newspaper, results, model_name))
         if format == "json":
             return content
         html_content = "".join(content)
-        return HTMLResponse(
-            content=f"{header}{html_content}</body></html>", status_code=200
-        )
+        return HTMLResponse(content=f"{header}{html_content}</body></html>", status_code=200)
 
     return app
 
@@ -116,8 +114,7 @@ def create_app(model_pool):
 def main():
     # make sure we only have one pool of models, several would consume too much memory
     model_pool = {
-        newspaper: {type: create_model(newspaper, type) for type in types}
-        for newspaper in newspaper_lookup.keys()
+        newspaper: {type: create_model(newspaper, type) for type in types} for newspaper in newspaper_lookup.keys()
     }
     app = create_app(model_pool)
     print("starting app on port 8000")
