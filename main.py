@@ -1,10 +1,14 @@
 from contextlib import contextmanager
 from dataclasses import dataclass
 from queue import Queue
+import sys
+from typing import Optional
 
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import HTMLResponse, JSONResponse
 from gensim.models.fasttext import FastText
+from pydantic import BaseModel
 import uvicorn
 
 
@@ -45,6 +49,16 @@ header = """
 """
 
 
+class SearchResult(BaseModel):
+    search_forms: list[str]
+    table: list[tuple[str, float]]
+
+
+class ModelResult(BaseModel):
+    fasttext_model_name: str
+    results: list[SearchResult]
+
+
 def get_name(newspaper, type) -> str:
     return f"kubord-fasttext-{newspaper_settings[newspaper].model_name}-{type}"
 
@@ -58,7 +72,7 @@ def create_model(newspaper, type) -> Queue:
     return q
 
 
-def format_html(newspaper, results, model_name):
+def format_html(newspaper: str, results: list[tuple[list[str], list[tuple[str, float]]]], model_name: str) -> str:
     tables = []
     for res in results:
         table_rows = [
@@ -77,11 +91,21 @@ def format_html(newspaper, results, model_name):
     return f"<h2>{model_name}</h2>{table_str}"
 
 
+def format_json(_, results: list[tuple[list[str], list[tuple[str, float]]]], model_name: str) -> ModelResult:
+    return ModelResult(
+        fasttext_model_name=model_name,
+        results=[SearchResult(search_forms=result[0], table=result[1]) for result in results],
+    )
+
+
 def create_app(model_pool):
     app = FastAPI()
 
     @contextmanager
     def get_model(newspaper, type):
+        """
+        Fasttext models are not thread-safe, so only let one request ues each model at a time
+        """
         pool = model_pool[newspaper][type]
         model = pool.get(block=True, timeout=5)
         try:
@@ -89,8 +113,10 @@ def create_app(model_pool):
         finally:
             model_pool[newspaper][type].put(model)
 
-    @app.get("/most_similar/{searches}")
-    def read_root(searches, newspaper="all", type="lemma", number=10, format=None):
+    @app.get("/most_similar/{searches}", response_model=None | ModelResult)
+    def read_root(
+        searches: str, newspaper: str = "all", type: str = "lemma", number: int = 10, format: Optional[str] = None
+    ) -> Response:
         searches = searches.split(",")
 
         if newspaper == "all":
@@ -110,12 +136,12 @@ def create_app(model_pool):
 
                 model_name = get_name(newspaper, type)
                 if format == "json":
-                    content.append([model_name, results])
+                    fun = format_json
                 else:
-                    # html is the default format
-                    content.append(format_html(newspaper, results, model_name))
+                    fun = format_html
+                content.append(fun(newspaper, results, model_name))
         if format == "json":
-            return content
+            return JSONResponse(content=jsonable_encoder(content))
         html_content = "".join(content)
         return HTMLResponse(content=f"{header}{html_content}</body></html>", status_code=200)
 
@@ -123,10 +149,13 @@ def create_app(model_pool):
 
 
 def main():
+    # for testing purposes, call main.py with one newspaper, to make startup faster
+    if len(sys.argv) > 1:
+        newspapers = [sys.argv[1]]
+    else:
+        newspapers = newspaper_settings.keys()
     # make sure we only have one pool of models, several would consume too much memory
-    model_pool = {
-        newspaper: {type: create_model(newspaper, type) for type in types} for newspaper in newspaper_settings.keys()
-    }
+    model_pool = {newspaper: {type: create_model(newspaper, type) for type in types} for newspaper in newspapers}
     app = create_app(model_pool)
     print("starting app on port 8000")
     uvicorn.run(app, host="0.0.0.0", port=8000)
