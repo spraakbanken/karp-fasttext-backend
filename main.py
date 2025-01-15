@@ -127,7 +127,7 @@ def create_app(model_pool):
             model_pool[newspaper][type].put(model)
 
     @app.get("/most_similar/{searches}", response_model=None | ModelResult, description=most_similar_description)
-    def read_root(
+    def most_similar(
         searches: str = Path(
             description="A comma-separated list of searches. Each search may contain more than one wordform, separated by |",
             examples="hållbarhet,hållbarhet|material",
