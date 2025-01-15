@@ -4,7 +4,7 @@ from queue import Queue
 import sys
 from typing import Optional
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Path, Query, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse, JSONResponse
 from gensim.models.fasttext import FastText
@@ -47,6 +47,17 @@ header = """
     </head>
     <body>
 """
+
+api_description = """Exposes the fasttext models under <https://spraakbanken.gu.se/resurser/kubord-fasttext>.
+as an API, with support for fetching the most similar words according to their word vector representation.
+
+There are six models available (three newspapers, two types of models)."""
+
+
+most_similar_description = """Calls fasttext `most_similar` on the selected model once per search query (see `searches`).
+
+For more information, see the
+[gensim documentation](https://radimrehurek.com/gensim/models/fasttext.html#gensim.models.fasttext.FastTextKeyedVectors.most_similar)"""
 
 
 class SearchResult(BaseModel):
@@ -99,7 +110,10 @@ def format_json(_, results: list[tuple[list[str], list[tuple[str, float]]]], mod
 
 
 def create_app(model_pool):
-    app = FastAPI()
+    app = FastAPI(
+        title="Språkbanken kubord-fasttext API",
+        description=api_description,
+    )
 
     @contextmanager
     def get_model(newspaper, type):
@@ -113,13 +127,31 @@ def create_app(model_pool):
         finally:
             model_pool[newspaper][type].put(model)
 
-    @app.get("/most_similar/{searches}", response_model=None | ModelResult)
+    @app.get("/most_similar/{searches}", response_model=None | ModelResult, description=most_similar_description)
     def read_root(
-        searches: str, newspaper: str = "all", type: str = "lemma", number: int = 10, format: Optional[str] = None
+        searches: str = Path(
+            description="A comma-separated list of searches. Each search may contain more than one wordform, separated by |",
+            examples="hållbarhet,hållbarhet|material",
+        ),
+        type: str = Query("lemma", description="""Model type, can be either "lemma" or "token"."""),
+        number: int = Query(
+            10,
+            description="The number of results to return.",
+        ),
+        newspaper: Optional[str] = Query(
+            None,
+            description="""Comma-separated list of newspapers
+                               Can be omitted to search in all newspapers.
+                               Available newspapers are: gp, dn or aftonbladet.""",
+        ),
+        format: Optional[str] = Query(
+            None,
+            description="""The format to return the results in. Can be "json", otherwise HTML is returned""",
+        ),
     ) -> Response:
         searches = searches.split(",")
 
-        if newspaper == "all":
+        if not newspaper:
             newspapers = list(newspaper_settings.keys())
         else:
             newspapers = newspaper.split(",")
