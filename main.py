@@ -180,7 +180,6 @@ def create_app(model_pool):
 
 
 def main():
-    # for testing purposes, call main.py with one newspaper, to make startup faster
     if len(sys.argv) > 1:
         port = int(sys.argv[1])
     else:
