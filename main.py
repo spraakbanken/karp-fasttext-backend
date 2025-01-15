@@ -13,21 +13,21 @@ import uvicorn
 
 
 @dataclass
-class NewspaperSettings:
+class NewspaperSetting:
     link: str
     model_name: str
 
 
 newspaper_settings = {
-    "gp": NewspaperSettings(
+    "gp": NewspaperSetting(
         link="https://spraakbanken.gu.se/korp/?mode=kubord#?cqp=%5B%5D&corpus=kubord2-gp-2013,kubord2-gp-2014,kubord2-gp-2015,kubord2-gp-2016,kubord2-gp-2017,kubord2-gp-2019,kubord2-gp-2021,kubord2-gp-2018,kubord2-gp-2020,kubord2-gp-2022&result_tab=2&show_stats&search=word|",
         model_name="gp-2013-2022",
     ),
-    "dn": NewspaperSettings(
+    "dn": NewspaperSetting(
         link="https://spraakbanken.gu.se/korp/?mode=kubord#?cqp=%5B%5D&corpus=kubord2-dn-2010,kubord2-dn-2011,kubord2-dn-2012,kubord2-dn-2013,kubord2-dn-2014,kubord2-dn-2015,kubord2-dn-2016,kubord2-dn-2017,kubord2-dn-2018,kubord2-dn-2019,kubord2-dn-2020,kubord2-dn-2021,kubord2-dn-2022&result_tab=2&show_stats&search=word|",
         model_name="dn-2010-2022",
     ),
-    "aftonbladet": NewspaperSettings(
+    "aftonbladet": NewspaperSetting(
         link="https://spraakbanken.gu.se/korp/?mode=kubord#?cqp=%5B%5D&corpus=kubord2-afb-2010,kubord2-afb-2011,kubord2-afb-2012,kubord2-afb-2013,kubord2-afb-2014,kubord2-afb-2016,kubord2-afb-2017,kubord2-afb-2018,kubord2-afb-2019,kubord2-afb-2020,kubord2-afb-2021,kubord2-afb-2015,kubord2-afb-2022&result_tab=2&show_stats&search=word|",
         model_name="afb-2010-2022",
     ),
