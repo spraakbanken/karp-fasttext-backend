@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from dataclasses import dataclass
 from queue import Queue
 
 from fastapi import FastAPI
@@ -7,17 +8,27 @@ from gensim.models.fasttext import FastText
 import uvicorn
 
 
-newspaper_links = {
-    "gp": "https://spraakbanken.gu.se/korp/?mode=kubord#?cqp=%5B%5D&corpus=kubord2-gp-2013,kubord2-gp-2014,kubord2-gp-2015,kubord2-gp-2016,kubord2-gp-2017,kubord2-gp-2019,kubord2-gp-2021,kubord2-gp-2018,kubord2-gp-2020,kubord2-gp-2022&result_tab=2&show_stats&search=word|",
-    "dn": "https://spraakbanken.gu.se/korp/?mode=kubord#?cqp=%5B%5D&corpus=kubord2-dn-2010,kubord2-dn-2011,kubord2-dn-2012,kubord2-dn-2013,kubord2-dn-2014,kubord2-dn-2015,kubord2-dn-2016,kubord2-dn-2017,kubord2-dn-2018,kubord2-dn-2019,kubord2-dn-2020,kubord2-dn-2021,kubord2-dn-2022&result_tab=2&show_stats&search=word|",
-    "aftonbladet": "https://spraakbanken.gu.se/korp/?mode=kubord#?cqp=%5B%5D&corpus=kubord2-afb-2010,kubord2-afb-2011,kubord2-afb-2012,kubord2-afb-2013,kubord2-afb-2014,kubord2-afb-2016,kubord2-afb-2017,kubord2-afb-2018,kubord2-afb-2019,kubord2-afb-2020,kubord2-afb-2021,kubord2-afb-2015,kubord2-afb-2022&result_tab=2&show_stats&search=word|",
+@dataclass
+class NewspaperSettings:
+    link: str
+    model_name: str
+
+
+newspaper_settings = {
+    "gp": NewspaperSettings(
+        link="https://spraakbanken.gu.se/korp/?mode=kubord#?cqp=%5B%5D&corpus=kubord2-gp-2013,kubord2-gp-2014,kubord2-gp-2015,kubord2-gp-2016,kubord2-gp-2017,kubord2-gp-2019,kubord2-gp-2021,kubord2-gp-2018,kubord2-gp-2020,kubord2-gp-2022&result_tab=2&show_stats&search=word|",
+        model_name="gp-2013-2022",
+    ),
+    "dn": NewspaperSettings(
+        link="https://spraakbanken.gu.se/korp/?mode=kubord#?cqp=%5B%5D&corpus=kubord2-dn-2010,kubord2-dn-2011,kubord2-dn-2012,kubord2-dn-2013,kubord2-dn-2014,kubord2-dn-2015,kubord2-dn-2016,kubord2-dn-2017,kubord2-dn-2018,kubord2-dn-2019,kubord2-dn-2020,kubord2-dn-2021,kubord2-dn-2022&result_tab=2&show_stats&search=word|",
+        model_name="dn-2010-2022",
+    ),
+    "aftonbladet": NewspaperSettings(
+        link="https://spraakbanken.gu.se/korp/?mode=kubord#?cqp=%5B%5D&corpus=kubord2-afb-2010,kubord2-afb-2011,kubord2-afb-2012,kubord2-afb-2013,kubord2-afb-2014,kubord2-afb-2016,kubord2-afb-2017,kubord2-afb-2018,kubord2-afb-2019,kubord2-afb-2020,kubord2-afb-2021,kubord2-afb-2015,kubord2-afb-2022&result_tab=2&show_stats&search=word|",
+        model_name="afb-2010-2022",
+    ),
 }
 
-newspaper_lookup = {
-    "gp": "gp-2013-2022",
-    "dn": "dn-2010-2022",
-    "aftonbladet": "afb-2010-2022",
-}
 
 types = ["lemma", "token"]
 
@@ -35,7 +46,7 @@ header = """
 
 
 def get_name(newspaper, type) -> str:
-    return f"kubord-fasttext-{newspaper_lookup[newspaper]}-{type}"
+    return f"kubord-fasttext-{newspaper_settings[newspaper].model_name}-{type}"
 
 
 def create_model(newspaper, type) -> Queue:
@@ -53,7 +64,7 @@ def format_html(newspaper, results, model_name):
         table_rows = [
             f"""<tr>
                     <td>
-                        <a href="{newspaper_links[newspaper] + row[0]}" target="_blank">{row[0]}</a>
+                        <a href="{newspaper_settings[newspaper].link + row[0]}" target="_blank">{row[0]}</a>
                     </td>
                     <td>{row[1]}</td>
                 </tr>"""
@@ -83,7 +94,7 @@ def create_app(model_pool):
         searches = searches.split(",")
 
         if newspaper == "all":
-            newspapers = list(newspaper_lookup.keys())
+            newspapers = list(newspaper_settings.keys())
         else:
             newspapers = newspaper.split(",")
 
@@ -114,7 +125,7 @@ def create_app(model_pool):
 def main():
     # make sure we only have one pool of models, several would consume too much memory
     model_pool = {
-        newspaper: {type: create_model(newspaper, type) for type in types} for newspaper in newspaper_lookup.keys()
+        newspaper: {type: create_model(newspaper, type) for type in types} for newspaper in newspaper_settings.keys()
     }
     app = create_app(model_pool)
     print("starting app on port 8000")
