@@ -1,9 +1,9 @@
 from contextlib import contextmanager
-from dataclasses import dataclass
 import os
 from queue import Queue
 import sys
 from typing import Optional
+import urllib.parse
 
 from fastapi import FastAPI, Header, Path, Query, Response
 from fastapi.encoders import jsonable_encoder
@@ -13,25 +13,27 @@ from pydantic import BaseModel
 import uvicorn
 
 
-@dataclass
 class NewspaperSetting:
-    link: str
     model_name: str
+    corpora: str
+
+    def __init__(self, newspaper, year_from, year_to):
+        self.model_name = f"{newspaper}-{year_from}-{year_to}"
+        self.corpora = ",".join(f"kubord2-{newspaper}-{year}" for year in range(year_from, year_to + 1))
+
+    def link(self, type, val):
+        if type == "lemma":
+            encoded = urllib.parse.quote(f'[lemma contains "{val}"]')
+            query = f"search_tab=1&within=word&search=cqp&cqp={encoded}"
+        else:
+            query = f"&isCaseInsensitive&search=word|{val}"
+        return f"https://spraakbanken.gu.se/korp/?mode=kubord#?corpus={self.corpora}&result_tab=2&show_stats&{query}"
 
 
 newspaper_settings = {
-    "gp": NewspaperSetting(
-        link="https://spraakbanken.gu.se/korp/?mode=kubord#?cqp=%5B%5D&corpus=kubord2-gp-2013,kubord2-gp-2014,kubord2-gp-2015,kubord2-gp-2016,kubord2-gp-2017,kubord2-gp-2019,kubord2-gp-2021,kubord2-gp-2018,kubord2-gp-2020,kubord2-gp-2022&result_tab=2&show_stats&search=word|",
-        model_name="gp-2013-2022",
-    ),
-    "dn": NewspaperSetting(
-        link="https://spraakbanken.gu.se/korp/?mode=kubord#?cqp=%5B%5D&corpus=kubord2-dn-2010,kubord2-dn-2011,kubord2-dn-2012,kubord2-dn-2013,kubord2-dn-2014,kubord2-dn-2015,kubord2-dn-2016,kubord2-dn-2017,kubord2-dn-2018,kubord2-dn-2019,kubord2-dn-2020,kubord2-dn-2021,kubord2-dn-2022&result_tab=2&show_stats&search=word|",
-        model_name="dn-2010-2022",
-    ),
-    "aftonbladet": NewspaperSetting(
-        link="https://spraakbanken.gu.se/korp/?mode=kubord#?cqp=%5B%5D&corpus=kubord2-afb-2010,kubord2-afb-2011,kubord2-afb-2012,kubord2-afb-2013,kubord2-afb-2014,kubord2-afb-2016,kubord2-afb-2017,kubord2-afb-2018,kubord2-afb-2019,kubord2-afb-2020,kubord2-afb-2021,kubord2-afb-2015,kubord2-afb-2022&result_tab=2&show_stats&search=word|",
-        model_name="afb-2010-2022",
-    ),
+    "gp": NewspaperSetting("gp", 2013, 2022),
+    "dn": NewspaperSetting("dn", 2010, 2022),
+    "aftonbladet": NewspaperSetting("afb", 2010, 2022),
 }
 
 
@@ -84,13 +86,15 @@ def create_model(newspaper, type) -> Queue:
     return q
 
 
-def format_html(newspaper: str, results: list[tuple[list[str], list[tuple[str, float]]]], model_name: str) -> str:
+def format_html(
+    newspaper: str, results: list[tuple[list[str], list[tuple[str, float]]]], model_name: str, type: str
+) -> str:
     tables = []
     for res in results:
         table_rows = [
             f"""<tr>
                     <td>
-                        <a href="{newspaper_settings[newspaper].link + row[0]}" target="_blank">{row[0]}</a>
+                        <a href="{newspaper_settings[newspaper].link(type, row[0])}" target="_blank">{row[0]}</a>
                     </td>
                     <td>{row[1]}</td>
                 </tr>"""
@@ -103,7 +107,7 @@ def format_html(newspaper: str, results: list[tuple[list[str], list[tuple[str, f
     return f"<h2>{model_name}</h2>{table_str}"
 
 
-def format_json(_, results: list[tuple[list[str], list[tuple[str, float]]]], model_name: str) -> ModelResult:
+def format_json(_, results: list[tuple[list[str], list[tuple[str, float]]]], model_name: str, __: str) -> ModelResult:
     return ModelResult(
         fasttext_model_name=model_name,
         results=[SearchResult(search_forms=result[0], table=result[1]) for result in results],
@@ -169,7 +173,7 @@ def create_app(model_pool):
                     fun = format_json
                 else:
                     fun = format_html
-                content.append(fun(newspaper, results, model_name))
+                content.append(fun(newspaper, results, model_name, type))
         if accept == "application/json":
             return JSONResponse(content=jsonable_encoder(content))
         html_content = "".join(content)
