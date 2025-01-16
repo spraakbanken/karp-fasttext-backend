@@ -23,7 +23,7 @@ class NewspaperSetting:
 
     def link(self, type, val):
         if type == "lemma":
-            encoded = urllib.parse.quote(f'[lemma contains "{val}"]')
+            encoded = urllib.parse.quote(f'[(word = "{val}" %c | lemma contains "{val}")]')
             query = f"search_tab=1&within=word&search=cqp&cqp={encoded}"
         else:
             query = f"&isCaseInsensitive&search=word|{val}"
