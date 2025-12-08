@@ -121,7 +121,7 @@ def create_app(model_pool):
     @contextmanager
     def get_model(newspaper, type):
         """
-        Fasttext models are not thread-safe, so only let one request ues each model at a time
+        Fasttext models are not thread-safe, so only let one request use each model at a time
         """
         pool = model_pool[newspaper][type]
         model = pool.get(block=True, timeout=5)
