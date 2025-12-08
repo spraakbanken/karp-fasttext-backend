@@ -1,11 +1,13 @@
 from contextlib import contextmanager
 import os
 from queue import Queue
+import re
 import sys
 from typing import Optional
 import urllib.parse
+from pathlib import Path
 
-from fastapi import FastAPI, Header, Path, Query, Response
+from fastapi import FastAPI, HTTPException, Header, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse, JSONResponse
 from gensim.models.fasttext import FastText
@@ -30,11 +32,20 @@ class NewspaperSetting:
         return f"https://spraakbanken.gu.se/korp/?mode=kubord#?corpus={self.corpora}&result_tab=2&show_stats&{query}"
 
 
-newspaper_settings = {
-    "gp": NewspaperSetting("gp", 2013, 2022),
-    "dn": NewspaperSetting("dn", 2010, 2022),
-    "aftonbladet": NewspaperSetting("afb", 2010, 2022),
-}
+def init_newspaper_settings():
+    settings = {}
+    for filename in Path(os.getenv("MODEL_DIR", "models")).glob("*token*"):
+        print(str(filename.name))
+        regexp = r"kubord-fasttext-([a-z]+)-([0-9]{4})-([0-9]{4})-token"
+        groups = re.match(regexp, str(filename.name)).groups()
+        newspaper = groups[0]
+        year_from = int(groups[1])
+        year_to = int(groups[2])
+        settings[newspaper] = NewspaperSetting(newspaper, year_from, year_to)
+    return settings
+
+
+newspaper_settings = init_newspaper_settings()
 
 
 types = ["lemma", "token"]
@@ -77,10 +88,15 @@ def get_name(newspaper, type) -> str:
     return f"kubord-fasttext-{newspaper_settings[newspaper].model_name}-{type}"
 
 
-def create_model(newspaper, type) -> Queue:
+def create_model(newspaper, type) -> FastText:
     model_name = get_name(newspaper, type)
     print(f"loading {model_name}")
-    model = FastText.load(f"models/{model_name}/{model_name}.bin")
+    model_dir = os.getenv("MODEL_DIR", "models")
+    return FastText.load(str(Path(model_dir) / model_name / f"{model_name}.bin"))
+
+
+def create_model_queue(newspaper, type) -> Queue:
+    model = create_model(newspaper, type)
     q = Queue(maxsize=1)
     q.put(model)
     return q
@@ -114,7 +130,11 @@ def format_json(_, results: list[tuple[list[str], list[tuple[str, float]]]], mod
     )
 
 
-def create_app(model_pool):
+def create_app(model_pool, single_model=False, newer_version=None):
+    """
+    - model_pool holds pre-created model object
+    - single_model if true, there is only one model loaded at a time
+    """
     root_path = os.environ.get("ROOT_PATH")
     app = FastAPI(title="Språkbanken kubord-fasttext API", description=api_description, root_path=root_path)
 
@@ -125,10 +145,48 @@ def create_app(model_pool):
         """
         pool = model_pool[newspaper][type]
         model = pool.get(block=True, timeout=5)
-        try:
-            yield model
-        finally:
-            model_pool[newspaper][type].put(model)
+
+        if isinstance(model, tuple):
+            # running in single model mode
+            model_newspaper, model_type, current_model = model
+            try:
+                new_ref = None
+                if model_newspaper != newspaper or model_type != type:
+                    # this will hopefully make the memory return faster
+                    del current_model
+                    new_ref = create_model(newspaper, type)
+                else:
+                    new_ref = current_model
+                yield new_ref
+            finally:
+                if new_ref is not None:
+                    model_pool[newspaper][type].put((newspaper, type, new_ref))
+                else:
+                    model_pool[newspaper][type].put(("", "", None))
+        else:
+            try:
+                yield model
+            finally:
+                model_pool[newspaper][type].put(model)
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(
+        request: Request,
+        exc: HTTPException,
+    ):
+        detail = f"<div>{exc.detail}</div>"
+        if newer_version:
+            full_without_host = request.url.path
+            if request.url.query:
+                full_without_host += "?" + request.url.query
+            detail += f'<div>Try: <a href="{newer_version}{full_without_host}">{newer_version}{full_without_host}</a> for full functionality.</div>'
+        if request.headers.get("accept") == "application/json":
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": detail},
+            )
+        else:
+            return HTMLResponse(status_code=exc.status_code, content=f"{header}{detail}</body></html>")
 
     @app.get("/most_similar/{searches}", response_model=None | ModelResult, description=most_similar_description)
     def most_similar(
@@ -157,6 +215,8 @@ def create_app(model_pool):
             newspapers = list(newspaper_settings.keys())
         else:
             newspapers = newspaper.split(",")
+        if single_model and len(newspapers) > 1:
+            raise HTTPException(status_code=400, detail="This instance supports only one newspaper per query")
 
         content = []
         for newspaper in newspapers:
@@ -187,10 +247,25 @@ def main():
         port = int(sys.argv[1])
     else:
         port = 8000
+
+    # the maximum number of models to load
+    single_model = os.getenv("SINGLE_MODEL")
+    # a reference to a newer version
+    newer_version = os.getenv("NEWER_VERSION")
+
     newspapers = newspaper_settings.keys()
-    # make sure we only have one pool of models, several would consume too much memory
-    model_pool = {newspaper: {type: create_model(newspaper, type) for type in types} for newspaper in newspapers}
-    app = create_app(model_pool)
+    if not single_model:
+        # make sure we only have one pool of models, by creating it before creating the app (which can have many threads)
+        model_pool = {
+            newspaper: {type: create_model_queue(newspaper, type) for type in types} for newspaper in newspapers
+        }
+    else:
+        # if running with SINGLE_MODEL set, we do not pre-load the models, but use a single Queue for all combinations of newspaper & type as a lock
+        lock = Queue(maxsize=1)
+        lock.put(("", "", None))
+        model_pool = {newspaper: {type: lock for type in types} for newspaper in newspapers}
+
+    app = create_app(model_pool, single_model=single_model, newer_version=newer_version)
     print(f"starting app on port {port}")
     uvicorn.run(app, host="0.0.0.0", port=port)
 
