@@ -136,7 +136,13 @@ def create_app(model_pool, single_model=False, newer_version=None):
     - single_model if true, there is only one model loaded at a time
     """
     root_path = os.environ.get("ROOT_PATH")
-    app = FastAPI(title="Språkbanken kubord-fasttext API", description=api_description, root_path=root_path)
+    app = FastAPI(
+        title="Språkbanken kubord-fasttext API",
+        description=api_description,
+        root_path=root_path,
+        redoc_url="/",
+        docs_url=None,
+    )
 
     @contextmanager
     def get_model(newspaper, type):
